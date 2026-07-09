@@ -1,3 +1,5 @@
+# Remotion renderer — use when deploying from repo root (Root Directory = /).
+# Zeabur auto-matches this file when the service is named "renderer" or "render-service".
 FROM node:18-bookworm-slim
 
 # Install Chromium and FFmpeg for Remotion rendering

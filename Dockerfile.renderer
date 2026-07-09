@@ -32,5 +32,8 @@ RUN cd /app/remotion && npm install
 # Build TypeScript
 RUN npm run build
 
+# Zeabur misconfigures Root Directory=render-service and tries to exec /render-service
+RUN printf '#!/bin/sh\nexec node /app/dist/server.js\n' > /render-service && chmod +x /render-service
+
 EXPOSE 3100
 CMD ["node", "dist/server.js"]

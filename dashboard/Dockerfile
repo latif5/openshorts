@@ -8,6 +8,10 @@ RUN npm install
 
 COPY . ./
 
+# Zeabur may use the Root Directory path (/dashboard) as the container entrypoint.
+COPY zeabur-entrypoint.sh /dashboard
+RUN chmod +x /dashboard
+
 EXPOSE 5173
 
-CMD ["sh", "-c", "npm run dev -- --host 0.0.0.0 --port ${PORT:-5173}"]
+CMD ["/dashboard"]

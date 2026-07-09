@@ -112,11 +112,21 @@ The renderer uses Remotion to generate MP4 clips with effects and subtitles.
 
 Go to the **Variables** tab of the renderer service and add:
 
+#### Required (runtime)
+
 | Variable | Value |
 |---|---|
 | `PORT` | `3100` |
 | `OUTPUT_DIR` | `/output` |
 | `REMOTION_BUNDLE_PATH` | `/app/remotion` |
+
+#### Required (build) — if the service is **not** named `renderer` or `render-service`
+
+| Variable | Value |
+|---|---|
+| `ZBPACK_DOCKERFILE_PATH` | `Dockerfile.renderer` |
+
+Without this, Zeabur uses the root `Dockerfile` (the Python backend, ~646 MB) and the container will fail to start.
 
 ### 3.3 — Mount Persistent Volume
 
@@ -192,24 +202,33 @@ Double-check that `VITE_API_URL` is set to the backend's **public HTTPS** domain
 Try setting `YOUTUBE_COOKIES` with valid Netscape-format cookies from a logged-in YouTube session. Alternatively, set `DISABLE_YOUTUBE_URL=true` and use local video uploads only.
 
 ### `exec: "/render-service": no such file or directory`
-This means Zeabur is trying to run the Root Directory path as a binary instead of using the Dockerfile.
+Zeabur is not using the renderer Dockerfile. Common causes:
+
+1. **Root Directory** is set to `render-service` → Zeabur tries to run `/render-service` as a native binary.
+2. **Wrong Dockerfile** — service name is not `renderer`/`render-service` and `ZBPACK_DOCKERFILE_PATH` is missing → Zeabur builds the Python backend (~646 MB image) instead.
+
+**Fix (do all of these):**
 
 1. Open the renderer service → **Settings**.
-2. Set **Root Directory** to `/` (repository root). The renderer Dockerfile must access both `render-service/` and `remotion/`.
-3. Clear any custom **Start Command** (leave it empty so the Dockerfile `CMD` is used).
-4. Either rename the service to `renderer` (auto-matches `Dockerfile.renderer`) or set `ZBPACK_DOCKERFILE_PATH=render-service/Dockerfile`.
-5. Redeploy the service.
+2. Set **Root Directory** to `/` (empty / repository root).
+3. Clear any custom **Start Command** (leave it blank).
+4. Go to **Variables** and add `ZBPACK_DOCKERFILE_PATH` = `Dockerfile.renderer` (unless the service is already named `renderer` or `render-service`).
+5. **Redeploy** and wait for a fresh build. In the build log you should see Node.js + Chromium steps, not Python/YOLO.
+6. After deploy, image size should be ~400–700 MB with Chromium — if you still see the exact same ~646 MB backend image hash, the wrong Dockerfile is still being used.
 
 ### `exec: "/dashboard": no such file or directory`
-This means Zeabur is trying to run the Root Directory path as a binary instead of using the Dockerfile.
+Zeabur is using the Root Directory name (`dashboard`) as the container entrypoint instead of the Dockerfile `CMD`.
 
-1. Open the failing service → **Settings**.
-2. Set **Root Directory** to `dashboard` (for the frontend) or `/` (for the backend).
-3. Clear any custom **Start Command** (leave it empty so the Dockerfile `CMD` is used).
-4. For the frontend, confirm `dashboard/zbpack.json` exists in your repo.
-5. Redeploy the service.
+**Quick fix in Zeabur (do all of these):**
+1. Open the service → **Settings** → clear **Start Command** (leave empty).
+2. Check **Variables** — delete `ZBPACK_START_COMMAND` if it is set to `/dashboard`.
+3. Set **Root Directory** to `dashboard` (for frontend) or `/` (for backend).
+4. Click **Redeploy** and wait for a **new build** — the image digest in logs must change (not `d-6a4fb423d5520eae64fa54b6`).
 
-If Root Directory is `dashboard`, do **not** set `ZBPACK_DOCKERFILE_PATH=dashboard/Dockerfile` — that path is only valid when Root Directory is `/`.
+**Repo fix:** `dashboard/zeabur-entrypoint.sh` is installed at `/dashboard` in the image so this Zeabur behavior works after a fresh build.
+
+If Root Directory is `/`, set `ZBPACK_DOCKERFILE_PATH=dashboard/Dockerfile`.
+If Root Directory is `dashboard`, do **not** set `ZBPACK_DOCKERFILE_PATH`.
 
 ---
 
