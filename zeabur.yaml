@@ -1,0 +1,80 @@
+apiVersion: zeabur.com/v1
+kind: Template
+metadata:
+  name: OpenShorts
+  description: AI-powered vertical video generator that transforms long videos into viral-ready short clips.
+spec:
+  services:
+    # 1. Backend Service (FastAPI)
+    - name: backend
+      template: GIT
+      spec:
+        ports:
+          - id: api
+            port: 8000
+            type: HTTP
+        volumes:
+          - id: backend-uploads
+            dir: /app/uploads
+          - id: backend-output
+            dir: /app/output
+        env:
+          PORT:
+            default: "8000"
+          MAX_CONCURRENT_JOBS:
+            default: "5"
+          DISABLE_YOUTUBE_URL:
+            default: "false"
+          RENDER_SERVICE_URL:
+            default: "http://renderer:3100"
+          AWS_REGION:
+            default: "eu-west-3"
+          AWS_S3_BUCKET:
+            default: "my-clips-bucket"
+          AWS_S3_PUBLIC_BUCKET:
+            default: "my-public-bucket"
+          # Empty placeholders for sensitive/secret envs
+          GEMINI_API_KEY:
+            default: ""
+          AWS_ACCESS_KEY_ID:
+            default: ""
+          AWS_SECRET_ACCESS_KEY:
+            default: ""
+          YOUTUBE_COOKIES:
+            default: ""
+
+    # 2. Renderer Service (Remotion)
+    - name: renderer
+      template: GIT
+      spec:
+        ports:
+          - id: renderer-port
+            port: 3100
+            type: HTTP
+        volumes:
+          - id: renderer-output
+            dir: /output
+        env:
+          PORT:
+            default: "3100"
+          OUTPUT_DIR:
+            default: "/output"
+          REMOTION_BUNDLE_PATH:
+            default: "/app/remotion"
+          ZBPACK_DOCKERFILE_PATH:
+            default: "render-service/Dockerfile"
+
+    # 3. Frontend Service (Vite React Dashboard)
+    - name: frontend
+      template: GIT
+      spec:
+        ports:
+          - id: web
+            port: 5173
+            type: HTTP
+        env:
+          VITE_API_URL:
+            # References the backend host dynamically in Zeabur
+            default: "http://${BACKEND_HOST}"
+          ZBPACK_APP_DIR:
+            default: "dashboard"
