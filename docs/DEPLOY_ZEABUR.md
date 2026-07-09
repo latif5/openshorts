@@ -171,6 +171,19 @@ Go to the **Variables** tab of the frontend service and add:
 
 Expose the service on port `5173`. Zeabur will assign a public domain.
 
+### 4.4 — Zeabur inline Dockerfile (if empty Dockerfile = no build)
+
+If your Zeabur service has a **Dockerfile** text editor, it must not be empty. Paste the full contents of [`Dockerfile.dashboard`](../Dockerfile.dashboard) from the repo, then configure:
+
+| Setting | Value |
+|---|---|
+| **Root Directory** | `/` (repository root) |
+| **ENTRYPOINT** | `/dashboard/zeabur-entrypoint.sh` |
+| **CMD Arguments** | *(leave empty)* |
+| **Port** | `5173` |
+
+Or click **Load from GitHub** to pull `Dockerfile.dashboard` automatically after pushing.
+
 ---
 
 ## Step 5 — Verify the Deployment
@@ -225,7 +238,12 @@ Zeabur is using the Root Directory name (`dashboard`) as the container entrypoin
 3. Set **Root Directory** to `dashboard` (for frontend) or `/` (for backend).
 4. Click **Redeploy** and wait for a **new build** — the image digest in logs must change (not `d-6a4fb423d5520eae64fa54b6`).
 
-**Repo fix:** `dashboard/zeabur-entrypoint.sh` is installed at `/dashboard` in the image so this Zeabur behavior works after a fresh build.
+**Repo fix:** `zeabur-entrypoint.sh` is installed at `/dashboard/zeabur-entrypoint.sh` in the image.
+
+**Zeabur UI settings (from your screenshot):**
+- **ENTRYPOINT:** `/dashboard/zeabur-entrypoint.sh` (correct — keep this)
+- **CMD Arguments:** leave empty
+- **Dockerfile:** click **Load from GitHub** — do not use a partial custom Dockerfile pasted in the UI. The full `Dockerfile.dashboard` must include the `/dashboard/zeabur-entrypoint.sh` install lines.
 
 If Root Directory is `/`, set `ZBPACK_DOCKERFILE_PATH=dashboard/Dockerfile`.
 If Root Directory is `dashboard`, do **not** set `ZBPACK_DOCKERFILE_PATH`.

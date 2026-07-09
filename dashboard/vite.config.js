@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     allowedHosts: [
       'openshorts.app',
-      'www.openshorts.app'
+      'www.openshorts.app',
+      '.zeabur.app',
     ],
     proxy: {
       '/api': {
@@ -35,5 +36,12 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  preview: {
+    allowedHosts: [
+      'openshorts.app',
+      'www.openshorts.app',
+      '.zeabur.app',
+    ],
+  },
 })

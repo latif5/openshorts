@@ -1,4 +1,4 @@
 {
   "dockerfile": "Dockerfile",
-  "start_command": "/dashboard"
+  "start_command": "/dashboard/zeabur-entrypoint.sh"
 }
