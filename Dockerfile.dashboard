@@ -1,0 +1,15 @@
+# Frontend dashboard — use when deploying from repo root (Root Directory = /).
+# Zeabur auto-matches this file when the service is named "dashboard".
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY dashboard/package.json dashboard/package-lock.json* ./
+
+RUN npm install
+
+COPY dashboard/ ./
+
+EXPOSE 5173
+
+CMD ["sh", "-c", "npm run dev -- --host 0.0.0.0 --port ${PORT:-5173}"]

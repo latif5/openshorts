@@ -102,7 +102,11 @@ The renderer uses Remotion to generate MP4 clips with effects and subtitles.
 1. Inside your project, click **Add Service → Git** (or GitHub).
 2. Select or enter the same OpenShorts repository URL.
 3. Keep **Root Directory** as `/` (repository root). This is necessary because the renderer build needs access to the `remotion/` directory, which is outside of `render-service/`.
-4. Once the service is created, go to the service **Settings > Configs** or add the environment variable `ZBPACK_DOCKERFILE_PATH` set to `render-service/Dockerfile` so Zeabur builds with the correct Dockerfile.
+4. Name the service `renderer` so Zeabur auto-matches `Dockerfile.renderer` at the repo root.
+
+> **Alternative:** If you use a different service name, add the environment variable `ZBPACK_DOCKERFILE_PATH` set to `render-service/Dockerfile` (or `Dockerfile.renderer`).
+
+> **Important:** Do **not** set Root Directory to `render-service`. Zeabur will try to run `/render-service` as a native binary and the container will crash on startup.
 
 ### 3.2 — Set Environment Variables
 
@@ -140,8 +144,10 @@ The frontend is the React + Vite dashboard.
 
 1. Inside your project, click **Add Service → Git** (or GitHub).
 2. Select or enter the same OpenShorts repository URL.
-3. Keep **Root Directory** as `/` (repository root) to align with the repository root build context.
-4. Once the service is created, go to the service **Settings > Configs** or add the environment variable `ZBPACK_DOCKERFILE_PATH` set to `dashboard/Dockerfile` so Zeabur builds with the correct Dockerfile.
+3. Set **Root Directory** to `dashboard` (Settings → Root Directory).
+4. Zeabur will detect `dashboard/Dockerfile` and `dashboard/zbpack.json` automatically.
+
+> **Alternative:** Keep Root Directory as `/` and either name the service `dashboard` (Zeabur auto-matches `Dockerfile.dashboard`) or set `ZBPACK_DOCKERFILE_PATH=dashboard/Dockerfile`.
 
 ### 4.2 — Set Environment Variables
 
@@ -185,6 +191,26 @@ Double-check that `VITE_API_URL` is set to the backend's **public HTTPS** domain
 ### YouTube downloads failing
 Try setting `YOUTUBE_COOKIES` with valid Netscape-format cookies from a logged-in YouTube session. Alternatively, set `DISABLE_YOUTUBE_URL=true` and use local video uploads only.
 
+### `exec: "/render-service": no such file or directory`
+This means Zeabur is trying to run the Root Directory path as a binary instead of using the Dockerfile.
+
+1. Open the renderer service → **Settings**.
+2. Set **Root Directory** to `/` (repository root). The renderer Dockerfile must access both `render-service/` and `remotion/`.
+3. Clear any custom **Start Command** (leave it empty so the Dockerfile `CMD` is used).
+4. Either rename the service to `renderer` (auto-matches `Dockerfile.renderer`) or set `ZBPACK_DOCKERFILE_PATH=render-service/Dockerfile`.
+5. Redeploy the service.
+
+### `exec: "/dashboard": no such file or directory`
+This means Zeabur is trying to run the Root Directory path as a binary instead of using the Dockerfile.
+
+1. Open the failing service → **Settings**.
+2. Set **Root Directory** to `dashboard` (for the frontend) or `/` (for the backend).
+3. Clear any custom **Start Command** (leave it empty so the Dockerfile `CMD` is used).
+4. For the frontend, confirm `dashboard/zbpack.json` exists in your repo.
+5. Redeploy the service.
+
+If Root Directory is `dashboard`, do **not** set `ZBPACK_DOCKERFILE_PATH=dashboard/Dockerfile` — that path is only valid when Root Directory is `/`.
+
 ---
 
 ## Files Added for Zeabur Support
@@ -193,5 +219,6 @@ Try setting `YOUTUBE_COOKIES` with valid Netscape-format cookies from a logged-i
 |---|---|
 | [`Dockerfile`](../Dockerfile) | Zeabur-optimized backend Dockerfile (runs as root, binds to `$PORT`) |
 | [`dashboard/Dockerfile`](../dashboard/Dockerfile) | Frontend Dockerfile |
-| [`render-service/Dockerfile`](../render-service/Dockerfile) | Renderer Dockerfile |
+| [`Dockerfile.renderer`](../Dockerfile.renderer) | Renderer Dockerfile (auto-matched when service is named `renderer`) |
+| [`render-service/Dockerfile`](../render-service/Dockerfile) | Same renderer Dockerfile (use with `ZBPACK_DOCKERFILE_PATH`) |
 | [`zeabur.yaml`](../zeabur.yaml) | Reference-only deployment config (env vars, volumes, ports) |

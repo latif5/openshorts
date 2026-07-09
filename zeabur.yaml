@@ -25,8 +25,10 @@
 #       YOUTUBE_COOKIES=<optional>
 #
 # SERVICE 2: Renderer (Remotion)
-#   - Root: render-service/ (set Root Directory in Zeabur dashboard)
-#   - Build: Uses render-service/Dockerfile (configured via render-service/zbpack.json)
+#   - Root: / (repo root — required for remotion/ access)
+#   - Build: Dockerfile.renderer (auto-match when service is named "renderer")
+#            OR ZBPACK_DOCKERFILE_PATH=render-service/Dockerfile
+#   - Do NOT set Root Directory to render-service/ (causes exec: /render-service error)
 #   - Volumes to mount:
 #       /output  (for rendered video output)
 #   - Environment variables to set:
