@@ -140,8 +140,8 @@ The frontend is the React + Vite dashboard.
 
 1. Inside your project, click **Add Service → Git** (or GitHub).
 2. Select or enter the same OpenShorts repository URL.
-3. Set **Root Directory** to `dashboard`.
-4. Zeabur will detect the `Dockerfile` inside the `dashboard/` directory and use it automatically.
+3. Keep **Root Directory** as `/` (repository root) to align with the repository root build context.
+4. Once the service is created, go to the service **Settings > Configs** or add the environment variable `ZBPACK_DOCKERFILE_PATH` set to `dashboard/Dockerfile` so Zeabur builds with the correct Dockerfile.
 
 ### 4.2 — Set Environment Variables
 
