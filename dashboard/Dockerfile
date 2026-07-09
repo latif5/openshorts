@@ -2,11 +2,13 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+# Copy package files from the dashboard subdirectory relative to the repo root build context
+COPY dashboard/package.json dashboard/package-lock.json* ./
 
 RUN npm install
 
-COPY . .
+# Copy all files from the dashboard subdirectory
+COPY dashboard/ ./
 
 EXPOSE 5173
 
