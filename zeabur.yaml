@@ -21,6 +21,8 @@ spec:
         env:
           PORT:
             default: "8000"
+          ZBPACK_DOCKERFILE_PATH:
+            default: "Dockerfile.zeabur"
           MAX_CONCURRENT_JOBS:
             default: "5"
           DISABLE_YOUTUBE_URL:
@@ -76,5 +78,7 @@ spec:
           VITE_API_URL:
             # References the backend host dynamically in Zeabur
             default: "http://${BACKEND_HOST}"
+          ZBPACK_DOCKERFILE_PATH:
+            default: "Dockerfile"
           ZBPACK_APP_DIR:
             default: "dashboard"
