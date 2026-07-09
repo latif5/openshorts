@@ -1,4 +1,5 @@
-# Multi-stage build for smaller final image
+# Multi-stage build optimized for Zeabur deployment
+# Runs as root, uses dynamic $PORT — required for Zeabur auto-detection
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
@@ -8,7 +9,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python dependencies
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN python -m venv /opt/venv
@@ -43,22 +43,26 @@ RUN pip install --upgrade --no-cache-dir yt-dlp
 # Copy application code
 COPY . .
 
-# Create a non-root user (Moved up)
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
-
 # Create directories including Ultralytics cache config
 RUN mkdir -p /app/uploads /app/output /tmp/Ultralytics
-# Fix permissions: /app for code/uploads, /tmp/Ultralytics for AI cache
-RUN chown -R appuser:appuser /app /tmp/Ultralytics
 
-# Switch to non-root user
-USER appuser
-
-# Pre-download YOLO model on build (now running as appuser)
+# Pre-download YOLO model on build
 RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
 
-# Expose FastAPI port
+# Set Zeabur environment variable defaults
+ENV PORT=8000
+ENV MAX_CONCURRENT_JOBS=5
+ENV DISABLE_YOUTUBE_URL=false
+ENV RENDER_SERVICE_URL=http://renderer:3100
+ENV AWS_REGION=eu-west-3
+ENV AWS_S3_BUCKET=my-clips-bucket
+ENV AWS_S3_PUBLIC_BUCKET=my-public-bucket
+
+# Declare persistent volumes for uploads and outputs
+VOLUME ["/app/uploads", "/app/output"]
+
+# Expose port (documented port, Zeabur will use $PORT env variable at runtime)
 EXPOSE 8000
 
-# Run FastAPI app
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run FastAPI app binding to the dynamic PORT environment variable
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]
