@@ -39,10 +39,10 @@ The backend is the main FastAPI service. It uses `Dockerfile.zeabur` at the repo
 
 ### 2.1 — Add the Service
 
-1. Inside your project, click **Add Service → GitHub**.
-2. Select your OpenShorts repository.
+1. Inside your project, click **Add Service → Git** (or GitHub).
+2. Select or enter your OpenShorts repository URL.
 3. Leave **Root Directory** empty (use `/`).
-4. Zeabur will detect `zbpack.json` and automatically use `Dockerfile.zeabur`.
+4. Zeabur will automatically detect the `Dockerfile` at the root and use it.
 
 > **Note:** The first build takes ~5–10 minutes because it downloads the YOLO model during the image build.
 
@@ -99,10 +99,10 @@ The renderer uses Remotion to generate MP4 clips with effects and subtitles.
 
 ### 3.1 — Add the Service
 
-1. Inside your project, click **Add Service → GitHub**.
-2. Select the **same** OpenShorts repository.
-3. Set **Root Directory** to `render-service`.
-4. Zeabur will detect `render-service/zbpack.json` and use `render-service/Dockerfile`.
+1. Inside your project, click **Add Service → Git** (or GitHub).
+2. Select or enter the same OpenShorts repository URL.
+3. Keep **Root Directory** as `/` (repository root). This is necessary because the renderer build needs access to the `remotion/` directory, which is outside of `render-service/`.
+4. Once the service is created, go to the service **Settings > Configs** or add the environment variable `ZBPACK_DOCKERFILE_PATH` set to `render-service/Dockerfile` so Zeabur builds with the correct Dockerfile.
 
 ### 3.2 — Set Environment Variables
 
@@ -138,10 +138,10 @@ The frontend is the React + Vite dashboard.
 
 ### 4.1 — Add the Service
 
-1. Inside your project, click **Add Service → GitHub**.
-2. Select the **same** OpenShorts repository.
+1. Inside your project, click **Add Service → Git** (or GitHub).
+2. Select or enter the same OpenShorts repository URL.
 3. Set **Root Directory** to `dashboard`.
-4. Zeabur will detect `dashboard/zbpack.json` and use `dashboard/Dockerfile`.
+4. Zeabur will detect the `Dockerfile` inside the `dashboard/` directory and use it automatically.
 
 ### 4.2 — Set Environment Variables
 
@@ -191,9 +191,7 @@ Try setting `YOUTUBE_COOKIES` with valid Netscape-format cookies from a logged-i
 
 | File | Purpose |
 |---|---|
-| [`Dockerfile.zeabur`](../Dockerfile.zeabur) | Zeabur-optimized backend Dockerfile (runs as root, binds to `$PORT`) |
-| [`zbpack.json`](../zbpack.json) | Tells Zeabur to build the backend using `Dockerfile.zeabur` |
-| [`zeabur.json`](../zeabur.json) | Supplementary Zeabur config (same as zbpack.json) |
-| [`dashboard/zbpack.json`](../dashboard/zbpack.json) | Tells Zeabur to build the frontend using `dashboard/Dockerfile` |
-| [`render-service/zbpack.json`](../render-service/zbpack.json) | Tells Zeabur to build the renderer using `render-service/Dockerfile` |
+| [`Dockerfile`](../Dockerfile) | Zeabur-optimized backend Dockerfile (runs as root, binds to `$PORT`) |
+| [`dashboard/Dockerfile`](../dashboard/Dockerfile) | Frontend Dockerfile |
+| [`render-service/Dockerfile`](../render-service/Dockerfile) | Renderer Dockerfile |
 | [`zeabur.yaml`](../zeabur.yaml) | Reference-only deployment config (env vars, volumes, ports) |
