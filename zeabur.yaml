@@ -1,84 +1,41 @@
-apiVersion: zeabur.com/v1
-kind: Template
-metadata:
-  name: OpenShorts
-  description: AI-powered vertical video generator that transforms long videos into viral-ready short clips.
-spec:
-  services:
-    # 1. Backend Service (FastAPI)
-    - name: backend
-      template: GIT
-      spec:
-        ports:
-          - id: api
-            port: 8000
-            type: HTTP
-        volumes:
-          - id: backend-uploads
-            dir: /app/uploads
-          - id: backend-output
-            dir: /app/output
-        env:
-          PORT:
-            default: "8000"
-          ZBPACK_DOCKERFILE_PATH:
-            default: "Dockerfile.zeabur"
-          MAX_CONCURRENT_JOBS:
-            default: "5"
-          DISABLE_YOUTUBE_URL:
-            default: "false"
-          RENDER_SERVICE_URL:
-            default: "http://renderer:3100"
-          AWS_REGION:
-            default: "eu-west-3"
-          AWS_S3_BUCKET:
-            default: "my-clips-bucket"
-          AWS_S3_PUBLIC_BUCKET:
-            default: "my-public-bucket"
-          # Empty placeholders for sensitive/secret envs
-          GEMINI_API_KEY:
-            default: ""
-          AWS_ACCESS_KEY_ID:
-            default: ""
-          AWS_SECRET_ACCESS_KEY:
-            default: ""
-          YOUTUBE_COOKIES:
-            default: ""
-
-    # 2. Renderer Service (Remotion)
-    - name: renderer
-      template: GIT
-      spec:
-        ports:
-          - id: renderer-port
-            port: 3100
-            type: HTTP
-        volumes:
-          - id: renderer-output
-            dir: /output
-        env:
-          PORT:
-            default: "3100"
-          OUTPUT_DIR:
-            default: "/output"
-          REMOTION_BUNDLE_PATH:
-            default: "/app/remotion"
-          ZBPACK_DOCKERFILE_PATH:
-            default: "render-service/Dockerfile"
-
-    # 3. Frontend Service (Vite React Dashboard)
-    - name: frontend
-      template: GIT
-      spec:
-        ports:
-          - id: web
-            port: 5173
-            type: HTTP
-        env:
-          VITE_API_URL:
-            # References the backend host dynamically in Zeabur
-            default: "http://${BACKEND_HOST}"
-          ZBPACK_DOCKERFILE_PATH:
-            default: "Dockerfile"
-          ZBPACK_APP_DIR:
-            default: "dashboard"
+# OpenShorts - Zeabur Deployment Reference
+#
+# This file is a DEPLOYMENT REFERENCE ONLY.
+# It is NOT used as a Zeabur template (kind: Template requires a public repo ID).
+#
+# To deploy on Zeabur, connect each service from your GitHub repo individually:
+#
+# SERVICE 1: Backend (FastAPI)
+#   - Root: / (repo root)
+#   - Build: Uses Dockerfile.zeabur (configured via zbpack.json + zeabur.json)
+#   - Volumes to mount:
+#       /app/uploads  (for processing uploads)
+#       /app/output   (for generated video clips)
+#   - Environment variables to set:
+#       PORT=8000
+#       MAX_CONCURRENT_JOBS=5
+#       DISABLE_YOUTUBE_URL=false
+#       RENDER_SERVICE_URL=http://<renderer-internal-host>:3100
+#       AWS_REGION=eu-west-3
+#       AWS_S3_BUCKET=<your-bucket>
+#       AWS_S3_PUBLIC_BUCKET=<your-public-bucket>
+#       AWS_ACCESS_KEY_ID=<secret>
+#       AWS_SECRET_ACCESS_KEY=<secret>
+#       GEMINI_API_KEY=<secret>
+#       YOUTUBE_COOKIES=<optional>
+#
+# SERVICE 2: Renderer (Remotion)
+#   - Root: render-service/ (set Root Directory in Zeabur dashboard)
+#   - Build: Uses render-service/Dockerfile (configured via render-service/zbpack.json)
+#   - Volumes to mount:
+#       /output  (for rendered video output)
+#   - Environment variables to set:
+#       PORT=3100
+#       OUTPUT_DIR=/output
+#       REMOTION_BUNDLE_PATH=/app/remotion
+#
+# SERVICE 3: Frontend (Vite React Dashboard)
+#   - Root: dashboard/ (set Root Directory in Zeabur dashboard)
+#   - Build: Uses dashboard/Dockerfile (configured via dashboard/zbpack.json)
+#   - Environment variables to set:
+#       VITE_API_URL=https://<your-backend-domain>
