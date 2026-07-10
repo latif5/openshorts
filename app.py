@@ -106,6 +106,155 @@ def _relocate_root_job_artifacts(job_id: str, job_output_dir: str) -> bool:
     except Exception:
         return False
 
+
+def add_job_log(job_id: str, line: str, is_saas: bool = False):
+    """Log to in-memory state and persist to a file in the output directory."""
+    target_dict = saas_jobs if is_saas else jobs
+    prefix = "saas_" if is_saas else ""
+    
+    if job_id in target_dict:
+        if 'logs' not in target_dict[job_id]:
+            target_dict[job_id]['logs'] = []
+        if not target_dict[job_id]['logs'] or target_dict[job_id]['logs'][-1] != line:
+            target_dict[job_id]['logs'].append(line)
+            
+    try:
+        job_output_dir = os.path.join(OUTPUT_DIR, f"{prefix}{job_id}")
+        os.makedirs(job_output_dir, exist_ok=True)
+        log_file = os.path.join(job_output_dir, "job.log")
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception as e:
+        print(f"Error writing persistent log for job {job_id}: {e}")
+
+
+def load_job_from_disk(job_id: str) -> bool:
+    """
+    Attempt to load a job from the persistent output directory.
+    Returns True if successfully loaded or reconstructed, False otherwise.
+    """
+    # Exclude special directory names or SaaS job prefixes
+    if job_id in ("thumbnails", "actor_uploads") or job_id.startswith("saas_"):
+        return False
+        
+    job_output_dir = os.path.join(OUTPUT_DIR, job_id)
+    if not os.path.isdir(job_output_dir):
+        return False
+        
+    # Reconstruct logs
+    logs = []
+    log_file = os.path.join(job_output_dir, "job.log")
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, "r", encoding="utf-8") as f:
+                logs = [line.strip() for line in f.readlines() if line.strip()]
+        except Exception:
+            pass
+            
+    # Check for metadata to see if it was completed
+    json_files = glob.glob(os.path.join(job_output_dir, "*_metadata.json"))
+    
+    status = "failed"
+    result = None
+    
+    if json_files:
+        try:
+            target_json = json_files[0]
+            if os.path.getsize(target_json) > 0:
+                with open(target_json, 'r') as f:
+                    data = json.load(f)
+                
+                base_name = os.path.basename(target_json).replace('_metadata.json', '')
+                clips = data.get('shorts', [])
+                cost_analysis = data.get('cost_analysis')
+                
+                ready_clips = []
+                for i, clip in enumerate(clips):
+                    clip_filename = f"{base_name}_clip_{i+1}.mp4"
+                    clip_path = os.path.join(job_output_dir, clip_filename)
+                    if os.path.exists(clip_path) and os.path.getsize(clip_path) > 0:
+                        clip['video_url'] = f"/videos/{job_id}/{clip_filename}"
+                        ready_clips.append(clip)
+                
+                if ready_clips:
+                    status = "completed"
+                    result = {'clips': ready_clips, 'cost_analysis': cost_analysis}
+        except Exception:
+            pass
+            
+    jobs[job_id] = {
+        'status': status,
+        'logs': logs if logs else ["Job restored from persistent storage."],
+        'result': result,
+        'output_dir': job_output_dir
+    }
+    return True
+
+
+def ensure_job_loaded(job_id: str) -> bool:
+    """Ensure that the job exists in memory or restore it from disk."""
+    if job_id in jobs:
+        return True
+    return load_job_from_disk(job_id)
+
+
+def persist_saas_result(job_id: str, status: str, result: Optional[Dict] = None):
+    """Save SaaSShorts result and status to a JSON file on disk."""
+    try:
+        job_output_dir = os.path.join(OUTPUT_DIR, f"saas_{job_id}")
+        os.makedirs(job_output_dir, exist_ok=True)
+        result_file = os.path.join(job_output_dir, "result.json")
+        with open(result_file, "w", encoding="utf-8") as f:
+            json.dump({"status": status, "result": result}, f)
+    except Exception as e:
+        print(f"Error persisting result for SaaS job {job_id}: {e}")
+
+
+def load_saas_job_from_disk(job_id: str) -> bool:
+    """Attempt to load a SaaSShorts job from disk."""
+    job_output_dir = os.path.join(OUTPUT_DIR, f"saas_{job_id}")
+    if not os.path.isdir(job_output_dir):
+        return False
+        
+    # Reconstruct logs
+    logs = []
+    log_file = os.path.join(job_output_dir, "job.log")
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, "r", encoding="utf-8") as f:
+                logs = [line.strip() for line in f.readlines() if line.strip()]
+        except Exception:
+            pass
+            
+    # Check for result file
+    result_file = os.path.join(job_output_dir, "result.json")
+    status = "failed"
+    result = None
+    
+    if os.path.exists(result_file):
+        try:
+            with open(result_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            status = data.get("status", "failed")
+            result = data.get("result")
+        except Exception:
+            pass
+            
+    saas_jobs[job_id] = {
+        "status": status,
+        "logs": logs if logs else ["SaaS job restored from disk."],
+        "result": result,
+        "output_dir": job_output_dir
+    }
+    return True
+
+
+def ensure_saas_job_loaded(job_id: str) -> bool:
+    """Ensure SaaS job exists in memory or restore it."""
+    if job_id in saas_jobs:
+        return True
+    return load_saas_job_from_disk(job_id)
+
 async def cleanup_jobs():
     """Background task to remove old jobs and files."""
     import time
@@ -223,8 +372,7 @@ def enqueue_output(out, job_id):
             decoded_line = line.decode('utf-8').strip()
             if decoded_line:
                 print(f"📝 [Job Output] {decoded_line}")
-                if job_id in jobs:
-                    jobs[job_id]['logs'].append(decoded_line)
+                add_job_log(job_id, decoded_line)
     except Exception as e:
         print(f"Error reading output for job {job_id}: {e}")
     finally:
@@ -238,7 +386,7 @@ async def run_job(job_id, job_data):
     output_dir = job_data['output_dir']
     
     jobs[job_id]['status'] = 'processing'
-    jobs[job_id]['logs'].append("Job started by worker.")
+    add_job_log(job_id, "Job started by worker.")
     print(f"🎬 [run_job] Executing command for {job_id}: {' '.join(cmd)}")
     
     try:
@@ -298,7 +446,7 @@ async def run_job(job_id, job_data):
         
         if returncode == 0:
             jobs[job_id]['status'] = 'completed'
-            jobs[job_id]['logs'].append("Process finished successfully.")
+            add_job_log(job_id, "Process finished successfully.")
             
             # Start S3 upload in background (silent, non-blocking)
             loop = asyncio.get_event_loop()
@@ -327,14 +475,14 @@ async def run_job(job_id, job_data):
                 jobs[job_id]['result'] = {'clips': clips, 'cost_analysis': cost_analysis}
             else:
                  jobs[job_id]['status'] = 'failed'
-                 jobs[job_id]['logs'].append("No metadata file generated.")
+                 add_job_log(job_id, "No metadata file generated.")
         else:
             jobs[job_id]['status'] = 'failed'
-            jobs[job_id]['logs'].append(f"Process failed with exit code {returncode}")
+            add_job_log(job_id, f"Process failed with exit code {returncode}")
             
     except Exception as e:
         jobs[job_id]['status'] = 'failed'
-        jobs[job_id]['logs'].append(f"Execution error: {str(e)}")
+        add_job_log(job_id, f"Execution error: {str(e)}")
 
 @app.get("/api/config")
 async def get_config():
@@ -431,12 +579,13 @@ async def process_endpoint(
     # Enqueue Job
     jobs[job_id] = {
         'status': 'queued',
-        'logs': [f"Job {job_id} queued."],
+        'logs': [],
         'cmd': cmd,
         'env': env,
         'output_dir': job_output_dir,
         'attestation': attestation
     }
+    add_job_log(job_id, f"Job {job_id} queued.")
 
     await job_queue.put(job_id)
 
@@ -444,7 +593,7 @@ async def process_endpoint(
 
 @app.get("/api/status/{job_id}")
 async def get_status(job_id: str):
-    if job_id not in jobs:
+    if not ensure_job_loaded(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[job_id]
@@ -477,7 +626,7 @@ async def edit_clip(
     if not final_api_key:
         raise HTTPException(status_code=400, detail="Missing Gemini API Key (Header or Body)")
 
-    if req.job_id not in jobs:
+    if not ensure_job_loaded(req.job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[req.job_id]
@@ -606,7 +755,7 @@ class SubtitleRequest(BaseModel):
 @app.get("/api/clip/{job_id}/{clip_index}/transcript")
 async def get_clip_transcript(job_id: str, clip_index: int):
     """Return word-level captions for a specific clip, formatted for Remotion."""
-    if job_id not in jobs:
+    if not ensure_job_loaded(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
 
     output_dir = os.path.join(OUTPUT_DIR, job_id)
@@ -693,7 +842,7 @@ async def generate_effects_config(
     if not final_api_key:
         raise HTTPException(status_code=400, detail="Missing Gemini API Key (Header)")
 
-    if req.job_id not in jobs:
+    if not ensure_job_loaded(req.job_id):
         raise HTTPException(status_code=404, detail="Job not found")
 
     job = jobs[req.job_id]
@@ -789,7 +938,7 @@ async def generate_effects_config(
 
 @app.post("/api/subtitle")
 async def add_subtitles(req: SubtitleRequest):
-    if req.job_id not in jobs:
+    if not ensure_job_loaded(req.job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     
     # Reload job data from disk just in case metadata was updated
@@ -910,7 +1059,7 @@ class HookRequest(BaseModel):
 
 @app.post("/api/hook")
 async def add_hook(req: HookRequest):
-    if req.job_id not in jobs:
+    if not ensure_job_loaded(req.job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[req.job_id]
@@ -1004,7 +1153,7 @@ async def translate_clip(
     if not x_elevenlabs_key:
         raise HTTPException(status_code=400, detail="Missing X-ElevenLabs-Key header")
 
-    if req.job_id not in jobs:
+    if not ensure_job_loaded(req.job_id):
         raise HTTPException(status_code=404, detail="Job not found")
 
     job = jobs[req.job_id]
@@ -1095,7 +1244,7 @@ import httpx
 
 @app.post("/api/social/post")
 async def post_to_socials(req: SocialPostRequest):
-    if req.job_id not in jobs:
+    if not ensure_job_loaded(req.job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[req.job_id]
@@ -2142,12 +2291,13 @@ async def saasshorts_generate(
                 fp = os.path.join(old_dir, f)
                 if f.endswith("_final.mp4") and os.path.getsize(fp) == 0:
                     os.remove(fp)
-            saas_jobs[job_id] = {
-                "status": "processing",
-                "logs": [f"Retrying job {job_id[:8]}... reusing cached assets from disk."],
-                "result": None,
-                "output_dir": job_output_dir,
-            }
+        saas_jobs[job_id] = {
+            "status": "processing",
+            "logs": [],
+            "result": None,
+            "output_dir": job_output_dir,
+        }
+        add_job_log(job_id, f"Retrying job {job_id[:8]}... reusing cached assets from disk.", is_saas=True)
 
     if not reused:
         job_id = str(uuid.uuid4())
@@ -2155,10 +2305,11 @@ async def saasshorts_generate(
         os.makedirs(job_output_dir, exist_ok=True)
         saas_jobs[job_id] = {
             "status": "processing",
-            "logs": ["SaaSShorts job started."],
+            "logs": [],
             "result": None,
             "output_dir": job_output_dir,
         }
+        add_job_log(job_id, "SaaSShorts job started.", is_saas=True)
 
     # If user selected a pre-generated actor, resolve it to a local path
     selected_actor_path = None
@@ -2197,8 +2348,7 @@ async def saasshorts_generate(
 
             def log_msg(msg):
                 print(f"[SaaSShorts Job {job_id[:8]}] {msg}")
-                if job_id in saas_jobs:
-                    saas_jobs[job_id]["logs"].append(msg)
+                add_job_log(job_id, msg, is_saas=True)
 
             def run():
                 return generate_full_video(req.script, config, job_output_dir, log_msg)
@@ -2215,7 +2365,8 @@ async def saasshorts_generate(
                     "cost_estimate": result.get("cost_estimate", {}),
                     "script": req.script,
                 }
-                saas_jobs[job_id]["logs"].append("Video generation completed!")
+                add_job_log(job_id, "Video generation completed!", is_saas=True)
+                persist_saas_result(job_id, "completed", saas_jobs[job_id]["result"])
 
                 # Upload to public gallery (non-blocking)
                 try:
@@ -2251,7 +2402,8 @@ async def saasshorts_generate(
             print(f"[SaaSShorts] ❌ Job {job_id} failed: {e}")
             if job_id in saas_jobs:
                 saas_jobs[job_id]["status"] = "failed"
-                saas_jobs[job_id]["logs"].append(f"Error: {str(e)}")
+                add_job_log(job_id, f"Error: {str(e)}", is_saas=True)
+                persist_saas_result(job_id, "failed")
         finally:
             concurrency_semaphore.release()
 
@@ -2263,7 +2415,7 @@ async def saasshorts_generate(
 @app.get("/api/saasshorts/status/{job_id}")
 async def saasshorts_status(job_id: str):
     """Poll SaaSShorts job status."""
-    if job_id not in saas_jobs:
+    if not ensure_saas_job_loaded(job_id):
         raise HTTPException(status_code=404, detail="SaaSShorts job not found")
 
     job = saas_jobs[job_id]
