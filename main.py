@@ -544,24 +544,9 @@ def _load_youtube_cookies(cookies_path='/app/cookies.txt', cookies_content=None)
         return None
 
 
-def download_youtube_video(url, output_dir=".", cookies_content=None):
-    """
-    Downloads a YouTube video using yt-dlp.
-    Returns the path to the downloaded video and the video title.
-    """
-    print(f"🔍 Debug: yt-dlp version: {yt_dlp.version.__version__}")
-    print("📥 Downloading video from YouTube...")
-    step_start_time = time.time()
-
-    cookies_path = _load_youtube_cookies(cookies_content=cookies_content)
-    
-    # With cookies, prefer web clients that support authentication.
-    # tv_embed/android ignore or reject cookie-based auth.
-    youtube_player_clients = (
-        ['web', 'mweb'] if cookies_path else ['tv_embed', 'android', 'mweb', 'web']
-    )
-
-    _COMMON_YDL_OPTS = {
+def _build_ytdl_opts(cookies_path, player_clients, output_template=None):
+    """Build yt-dlp options for a given YouTube player client strategy."""
+    opts = {
         'quiet': False,
         'verbose': True,
         'no_warnings': False,
@@ -571,12 +556,11 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
         'fragment_retries': 10,
         'nocheckcertificate': True,
         'cachedir': False,
-        # YouTube now requires a JS runtime + EJS scripts to solve n-challenges
         'js_runtimes': {'deno': {}, 'node': {}},
         'remote_components': {'ejs:github'},
         'extractor_args': {
             'youtube': {
-                'player_client': youtube_player_clients,
+                'player_client': player_clients,
             }
         },
         'http_headers': {
@@ -587,102 +571,132 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
             ),
         },
     }
+    if output_template:
+        opts.update({
+            'format': (
+                'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/'
+                'bestvideo[vcodec^=avc1]+bestaudio/'
+                'bestvideo+bestaudio/'
+                'best[ext=mp4]/best'
+            ),
+            'outtmpl': output_template,
+            'merge_output_format': 'mp4',
+            'overwrites': True,
+        })
+    return opts
 
-    with yt_dlp.YoutubeDL(_COMMON_YDL_OPTS) as ydl:
-        try:
-            # process=False avoids failing when YouTube hides formats behind JS challenges
-            info = ydl.extract_info(url, download=False, process=False)
-            video_title = info.get('title', 'youtube_video')
-            sanitized_title = sanitize_filename(video_title)
-        except Exception as e:
-            # Force print to stderr/stdout immediately so it's captured before crash
-            import sys
-            import traceback
-            
-            # Print minimal error first to ensure something gets out
-            print("🚨 YOUTUBE DOWNLOAD ERROR 🚨", file=sys.stderr)
-            
-            err = str(e)
-            if 'format is not available' in err.lower() or 'only images are available' in err.lower():
-                reason = (
-                    "YouTube blocked video formats on this server (missing JS challenge solver).\n"
-                    "        Redeploy backend with latest image, or upload the video manually."
-                )
-            elif 'no longer valid' in err.lower() or 'login_required' in err.lower() or 'not a bot' in err.lower():
-                reason = (
-                    "YouTube rejected the cookies (expired, rotated, or invalid).\n"
-                    "        Export fresh cookies from your browser and paste them in Dashboard Settings."
-                )
-            else:
-                reason = (
-                    "YouTube has blocked the download request (Error 429/Unavailable).\n"
-                    "        This is likely a temporary IP ban on this server."
-                )
 
-            error_msg = f"""
-            
+def _youtube_download_error_message(err):
+    err_lower = err.lower()
+    if 'format is not available' in err_lower or 'only images are available' in err_lower:
+        reason = (
+            "YouTube blocked all video formats on this cloud server.\n"
+            "        YouTube now requires PO tokens + JS challenges that often fail on datacenter IPs."
+        )
+    elif 'no longer valid' in err_lower or 'login_required' in err_lower or 'not a bot' in err_lower:
+        reason = (
+            "YouTube rejected the cookies (expired, rotated, or invalid).\n"
+            "        Export fresh cookies from your browser and paste them in Dashboard Settings."
+        )
+    else:
+        reason = (
+            "YouTube blocked the download on this server IP.\n"
+            "        Cloud/datacenter IPs are frequently blocked by YouTube."
+        )
+    return f"""
 ❌ ================================================================= ❌
 ❌ FATAL ERROR: YOUTUBE DOWNLOAD FAILED
 ❌ ================================================================= ❌
-            
+
 REASON: {reason}
 
-👇 SOLUTION FOR USER 👇
+👇 RELIABLE SOLUTION 👇
 ---------------------------------------------------------------------
-1. Export NEW cookies (logged into YouTube) → Dashboard → YouTube Cookies
-2. Or download the video manually and use the 'Upload Video' tab
-3. Remove stale YOUTUBE_COOKIES / YOUTUBE_COOKIES_BASE64 from Zeabur backend env
+Use the **Upload Video** tab — download the video on your computer first,
+then upload the file. This always works on cloud servers.
 ---------------------------------------------------------------------
 
 Technical Details: {err}
-            """
-            # Print to both streams to ensure capture
-            print(error_msg, file=sys.stdout)
-            print(error_msg, file=sys.stderr)
-            
-            # Force flush
-            sys.stdout.flush()
-            sys.stderr.flush()
-            
-            # Wait a split second to allow buffer to drain before raising
-            time.sleep(0.5)
-            
-            raise e
-    
-    output_template = os.path.join(output_dir, f'{sanitized_title}.%(ext)s')
-    expected_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
-    if os.path.exists(expected_file):
-        os.remove(expected_file)
-        print(f"🗑️  Removed existing file to re-download with H.264 codec")
-    
-    ydl_opts = {
-        **_COMMON_YDL_OPTS,
-        'format': (
-            'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[vcodec^=avc1]+bestaudio/'
-            'bestvideo+bestaudio/'
-            'best[ext=mp4]/best'
-        ),
-        'outtmpl': output_template,
-        'merge_output_format': 'mp4',
-        'overwrites': True,
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    
-    downloaded_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
-    
-    if not os.path.exists(downloaded_file):
-        for f in os.listdir(output_dir):
-            if f.startswith(sanitized_title) and f.endswith('.mp4'):
-                downloaded_file = os.path.join(output_dir, f)
-                break
-    
-    step_end_time = time.time()
-    print(f"✅ Video downloaded in {step_end_time - step_start_time:.2f}s: {downloaded_file}")
-    
-    return downloaded_file, sanitized_title
+"""
+
+
+def download_youtube_video(url, output_dir=".", cookies_content=None):
+    """
+    Downloads a YouTube video using yt-dlp.
+    Returns the path to the downloaded video and the video title.
+    """
+    print(f"🔍 Debug: yt-dlp version: {yt_dlp.version.__version__}")
+    print("📥 Downloading video from YouTube...")
+    step_start_time = time.time()
+
+    cookies_path = _load_youtube_cookies(cookies_content=cookies_content)
+
+    # Try multiple player clients — YouTube requirements change frequently.
+    if cookies_path:
+        client_strategies = [
+            ['android_vr'],
+            ['tv'],
+            ['web', 'mweb'],
+            ['tv_embed', 'android'],
+        ]
+    else:
+        client_strategies = [
+            ['tv_embed', 'android'],
+            ['android_vr'],
+            ['mweb', 'web'],
+        ]
+
+    last_error = None
+    sanitized_title = None
+
+    for clients in client_strategies:
+        print(f"🔄 Trying YouTube player clients: {clients}")
+        try:
+            opts = _build_ytdl_opts(cookies_path, clients)
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False, process=False)
+                video_title = info.get('title', 'youtube_video')
+                sanitized_title = sanitize_filename(video_title)
+
+            output_template = os.path.join(output_dir, f'{sanitized_title}.%(ext)s')
+            expected_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
+            if os.path.exists(expected_file):
+                os.remove(expected_file)
+                print("🗑️  Removed existing file to re-download with H.264 codec")
+
+            dl_opts = _build_ytdl_opts(cookies_path, clients, output_template)
+            with yt_dlp.YoutubeDL(dl_opts) as ydl:
+                ydl.download([url])
+
+            downloaded_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
+            if not os.path.exists(downloaded_file):
+                for f in os.listdir(output_dir):
+                    if f.startswith(sanitized_title) and f.endswith('.mp4'):
+                        downloaded_file = os.path.join(output_dir, f)
+                        break
+
+            if os.path.exists(downloaded_file):
+                step_end_time = time.time()
+                print(f"✅ Video downloaded via {clients} in {step_end_time - step_start_time:.2f}s: {downloaded_file}")
+                return downloaded_file, sanitized_title
+
+            raise yt_dlp.utils.DownloadError("Download completed but output file not found")
+
+        except Exception as e:
+            last_error = e
+            print(f"⚠️ Strategy {clients} failed: {e}")
+            continue
+
+    import sys
+    err = str(last_error) if last_error else "All download strategies failed"
+    error_msg = _youtube_download_error_message(err)
+    print("🚨 YOUTUBE DOWNLOAD ERROR 🚨", file=sys.stderr)
+    print(error_msg, file=sys.stdout)
+    print(error_msg, file=sys.stderr)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    time.sleep(0.5)
+    raise last_error or RuntimeError(err)
 
 def process_video_to_vertical(input_video, final_output_video):
     """
