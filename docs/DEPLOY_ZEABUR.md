@@ -187,16 +187,18 @@ Expose the service on port `5173`. Zeabur will assign a public domain.
 
 ### 4.4 — Zeabur inline Dockerfile (if empty Dockerfile = no build)
 
-If your Zeabur service has a **Dockerfile** text editor, it must not be empty. Paste the full contents of [`Dockerfile.dashboard`](../Dockerfile.dashboard) from the repo, then configure:
+If your Zeabur service has a **Dockerfile** text editor, paste the full contents of [`Dockerfile.dashboard`](../Dockerfile.dashboard) from the repo.
+
+The dashboard image runs a **production build** (`npm run build` + `vite preview`), not the Vite dev server.
 
 | Setting | Value |
 |---|---|
 | **Root Directory** | `/` (repository root) |
 | **ENTRYPOINT** | `/dashboard/zeabur-entrypoint.sh` |
 | **CMD Arguments** | *(leave empty)* |
-| **Port** | `5173` |
+| **Port** | `5173` (or Zeabur-assigned `PORT`) |
 
-Or click **Load from GitHub** to pull `Dockerfile.dashboard` automatically after pushing.
+> **Important:** Set `VITE_API_URL` in Zeabur **before** building — Vite bakes it into the bundle at build time.
 
 ---
 
@@ -222,7 +224,16 @@ The `Dockerfile.zeabur` runs as `root` specifically to avoid this. If you see pe
 ### Renderer cannot connect to backend
 Make sure both services are in the **same Zeabur project**. Internal service DNS only works within the same project. The `RENDER_SERVICE_URL` should use the service name (e.g., `http://renderer:3100`), not the public domain.
 
-### Frontend cannot reach the backend
+### Frontend cannot reach the backend / CORS errors
+If you see `blocked by CORS policy` **and** `502 Bad Gateway`, the backend is **down** — Zeabur's gateway returns 502 without CORS headers, which looks like a CORS failure.
+
+1. Open `https://<your-backend>.zeabur.app/api/config` directly in the browser.
+   - **JSON** → backend is up; redeploy backend after CORS fix if needed.
+   - **502 / error page** → backend is crashed or not listening on `$PORT`.
+2. Check **backend logs** on Zeabur for startup errors (OOM, import error, wrong port).
+3. Confirm backend **Networking** port matches `PORT` env var (usually `8000`).
+4. Confirm `VITE_API_URL` on dashboard points to the **backend** URL with `https://`.
+
 Double-check that `VITE_API_URL` is set to the backend's **public HTTPS** domain (e.g., `https://openshorts-backend.zeabur.app`), not an internal address.
 
 ### `getaddrinfo ENOTFOUND backend` in dashboard logs
