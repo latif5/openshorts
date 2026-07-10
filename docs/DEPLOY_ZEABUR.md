@@ -74,7 +74,8 @@ Go to the **Variables** tab of the backend service and add the following:
 | `MAX_CONCURRENT_JOBS` | `5` | Max parallel video processing jobs |
 | `DISABLE_YOUTUBE_URL` | `false` | Set `true` to block YouTube downloads |
 | `RENDER_SERVICE_URL` | `http://renderer:3100` | Internal URL of the renderer service |
-| `YOUTUBE_COOKIES` | *(empty)* | Netscape-format cookies to bypass bot detection |
+| `YOUTUBE_COOKIES` | *(empty)* | Netscape-format cookies (multiline — hard to paste in Zeabur) |
+| `YOUTUBE_COOKIES_BASE64` | *(empty)* | **Recommended.** Base64-encoded cookies file (single line) |
 
 ### 2.3 — Mount Persistent Volumes
 
@@ -163,9 +164,22 @@ The frontend is the React + Vite dashboard.
 
 Go to the **Variables** tab of the frontend service and add:
 
+| Variable | Value | Required |
+|---|---|---|
+| `VITE_API_URL` | The public HTTPS domain of your backend service (e.g. `https://openshorts-be.zeabur.app`) | **Yes** |
+
+> **Must include `https://`** — if you set only `openshorts-be.zeabur.app`, requests become `dashboard.../openshorts-be.zeabur.app/api/...` and return 404.
+
+> **Why this is required:** Without `VITE_API_URL`, the dashboard sends `/api/*` requests to itself and Vite tries to proxy them to `http://backend:8000` — that hostname only exists in Docker Compose, not on Zeabur. You will see `getaddrinfo ENOTFOUND backend` in the logs and video processing will fail.
+
+**Alternative (same Zeabur project only):** If you prefer internal networking instead of public URLs, set:
+
 | Variable | Value |
 |---|---|
-| `VITE_API_URL` | The public HTTPS domain of your backend service (e.g. `https://openshorts-backend.zeabur.app`) |
+| `VITE_PROXY_BACKEND` | `http://<backend-service-name>:8000` (e.g. `http://openshorts:8000`) |
+| `VITE_PROXY_RENDERER` | `http://<renderer-service-name>:3100` |
+
+Use the exact service name from your Zeabur project dashboard.
 
 ### 4.3 — Configure Networking
 
@@ -211,8 +225,40 @@ Make sure both services are in the **same Zeabur project**. Internal service DNS
 ### Frontend cannot reach the backend
 Double-check that `VITE_API_URL` is set to the backend's **public HTTPS** domain (e.g., `https://openshorts-backend.zeabur.app`), not an internal address.
 
+### `getaddrinfo ENOTFOUND backend` in dashboard logs
+The dashboard is running Vite's dev proxy, which defaults to `http://backend:8000` (Docker Compose only).
+
+**Fix:** On the **dashboard** service → **Variables**, add:
+
+```
+VITE_API_URL=https://<your-backend-service>.zeabur.app
+```
+
+Then **redeploy** the dashboard. After redeploy, API calls go directly to the backend instead of through the broken proxy.
+
+If both services are in the same Zeabur project, you can instead set:
+
+```
+VITE_PROXY_BACKEND=http://<backend-service-name>:8000
+```
+
+Use the backend's service name as shown in the Zeabur project (not `backend` unless you named it that).
+
 ### YouTube downloads failing
-Try setting `YOUTUBE_COOKIES` with valid Netscape-format cookies from a logged-in YouTube session. Alternatively, set `DISABLE_YOUTUBE_URL=true` and use local video uploads only.
+Try setting YouTube cookies on the **backend** service. Zeabur env vars are single-line, so use base64:
+
+1. Save your Netscape cookies to a file `cookies.txt` on your Mac
+2. Run in terminal:
+   ```bash
+   base64 -i cookies.txt | tr -d '\n' | pbcopy
+   ```
+3. In Zeabur backend → **Variables**, add:
+   ```
+   YOUTUBE_COOKIES_BASE64=<paste the copied single line>
+   ```
+4. Redeploy the backend
+
+Alternatively, set `DISABLE_YOUTUBE_URL=true` and use local video uploads only.
 
 ### `exec: "/render-service": no such file or directory`
 Zeabur is not using the renderer Dockerfile. Common causes:

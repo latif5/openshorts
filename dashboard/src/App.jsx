@@ -9,7 +9,7 @@ import ThumbnailStudio from './components/ThumbnailStudio';
 import SaaShortsTab from './components/SaaShortsTab';
 import UGCGallery from './components/UGCGallery';
 import ScheduleWeekModal from './components/ScheduleWeekModal';
-import { getApiUrl } from './config';
+import { getApiUrl, parseJsonResponse, getYoutubeCookieHeaders } from './config';
 
 // Enhanced "Encryption" using XOR + Base64 with a Salt
 // This is better than plain Base64 but still client-side.
@@ -155,6 +155,12 @@ function App() {
     return '';
   });
 
+  const [youtubeCookies, setYoutubeCookies] = useState(() => {
+    const stored = localStorage.getItem('youtubeCookies_v1');
+    if (stored) return decrypt(stored);
+    return '';
+  });
+
   const [uploadUserId, setUploadUserId] = useState(() => localStorage.getItem('uploadUserId') || '');
   const [userProfiles, setUserProfiles] = useState([]); // List of {username, connected: []}
   const [showKeyModal, setShowKeyModal] = useState(false);
@@ -258,6 +264,12 @@ function App() {
   }, [falKey]);
 
   useEffect(() => {
+    if (youtubeCookies) {
+      localStorage.setItem('youtubeCookies_v1', encrypt(youtubeCookies));
+    }
+  }, [youtubeCookies]);
+
+  useEffect(() => {
     if (uploadPostKey && userProfiles.length === 0) {
       fetchUserProfiles();
     }
@@ -303,8 +315,8 @@ function App() {
       const res = await fetch(getApiUrl('/api/social/user'), {
         headers: { 'X-Upload-Post-Key': uploadPostKey }
       });
-      if (!res.ok) throw new Error("Failed to fetch");
-      const data = await res.json();
+      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+      const data = await parseJsonResponse(res);
       if (data.profiles && data.profiles.length > 0) {
         setUserProfiles(data.profiles);
         // Auto select first if none selected
@@ -332,7 +344,10 @@ function App() {
 
     try {
       let body;
-      const headers = { 'X-Gemini-Key': apiKey };
+      const headers = {
+        'X-Gemini-Key': apiKey,
+        ...getYoutubeCookieHeaders(youtubeCookies),
+      };
 
       if (data.type === 'url') {
         headers['Content-Type'] = 'application/json';
@@ -346,7 +361,7 @@ function App() {
 
       const res = await fetch(getApiUrl('/api/process'), {
         method: 'POST',
-        headers: data.type === 'url' ? headers : { 'X-Gemini-Key': apiKey },
+        headers: data.type === 'url' ? headers : { 'X-Gemini-Key': apiKey, ...getYoutubeCookieHeaders(youtubeCookies) },
         body
       });
 
@@ -618,6 +633,29 @@ function App() {
                     </span>
                   </p>
                 </div>
+              </div>
+
+              <div className="glass-panel p-6 mt-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">YouTube Cookies</h2>
+                  <span className="text-[10px] bg-white/5 border border-white/5 px-2 py-0.5 rounded text-zinc-500 uppercase tracking-wider">Optional</span>
+                </div>
+                <p className="text-xs text-zinc-500 mb-4 leading-relaxed">
+                  Required for <strong>YouTube URL</strong> processing on cloud servers (Zeabur, Railway, etc.).
+                  Export cookies from your browser in <strong>Netscape format</strong> and paste below.
+                  Stored only in your browser — sent to the backend per request, never saved server-side.
+                </p>
+                <label className="block text-sm text-zinc-400 mb-2">Netscape cookies.txt content</label>
+                <textarea
+                  value={youtubeCookies}
+                  onChange={(e) => setYoutubeCookies(e.target.value)}
+                  className="input-field min-h-[140px] font-mono text-xs"
+                  placeholder={"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\t..."}
+                />
+                <p className="text-[11px] text-zinc-600 mt-2">
+                  Use a browser extension like &quot;Get cookies.txt LOCALLY&quot; while logged into YouTube.
+                  Must include the <code className="text-zinc-400"># Netscape HTTP Cookie File</code> header line.
+                </p>
               </div>
 
               <div className="glass-panel p-6 mt-8">

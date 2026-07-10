@@ -1,4 +1,5 @@
 import time
+import base64
 import cv2
 import scenedetect
 import subprocess
@@ -446,7 +447,68 @@ def sanitize_filename(filename):
     return filename[:100]
 
 
-def download_youtube_video(url, output_dir="."):
+def _normalize_netscape_cookies(content):
+    """Normalize and validate Netscape-format cookie text for yt-dlp."""
+    text = content.strip().replace('\r\n', '\n').replace('\r', '\n')
+    if not text:
+        return None
+
+    if not text.startswith('# Netscape'):
+        text = '# Netscape HTTP Cookie File\n# https://curl.haxx.se/rfc/cookie_spec.html\n' + text
+
+    if '.youtube.com' not in text and 'youtube.com' not in text:
+        print("⚠️ Cookies content does not contain youtube.com entries.")
+        return None
+
+    return text + ('\n' if not text.endswith('\n') else '')
+
+
+def _load_youtube_cookies(cookies_path='/app/cookies.txt', cookies_content=None):
+    """Write YouTube cookies to a file for yt-dlp.
+
+    cookies_content: raw Netscape text from request (dashboard settings).
+    Env fallbacks:
+    - YOUTUBE_COOKIES_BASE64: single-line base64
+    - YOUTUBE_COOKIES: raw Netscape format, or with literal \\n newlines
+    """
+    if cookies_content:
+        print("🍪 Using YouTube cookies from request...")
+        normalized = _normalize_netscape_cookies(cookies_content)
+    else:
+        cookies_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64", "").strip()
+        cookies_env = os.environ.get("YOUTUBE_COOKIES", "").strip()
+
+        if cookies_b64:
+            print("🍪 Found YOUTUBE_COOKIES_BASE64 env var, decoding cookies file...")
+            try:
+                cookies_content = base64.b64decode(cookies_b64).decode("utf-8")
+            except Exception as e:
+                print(f"⚠️ Failed to decode YOUTUBE_COOKIES_BASE64: {e}")
+                return None
+            normalized = _normalize_netscape_cookies(cookies_content)
+        elif cookies_env:
+            print("🍪 Found YOUTUBE_COOKIES env var, creating cookies file inside container...")
+            normalized = _normalize_netscape_cookies(cookies_env.replace("\\n", "\n"))
+        else:
+            print("⚠️ YOUTUBE_COOKIES env var not found.")
+            return None
+
+    if not normalized:
+        print("⚠️ Invalid YouTube cookies content.")
+        return None
+
+    try:
+        with open(cookies_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(normalized)
+        if os.path.exists(cookies_path):
+            print(f"   Debug: Cookies file created. Size: {os.path.getsize(cookies_path)} bytes")
+        return cookies_path
+    except Exception as e:
+        print(f"⚠️ Failed to write cookies file: {e}")
+        return None
+
+
+def download_youtube_video(url, output_dir=".", cookies_content=None):
     """
     Downloads a YouTube video using yt-dlp.
     Returns the path to the downloaded video and the video title.
@@ -455,24 +517,7 @@ def download_youtube_video(url, output_dir="."):
     print("📥 Downloading video from YouTube...")
     step_start_time = time.time()
 
-    cookies_path = '/app/cookies.txt'
-    cookies_env = os.environ.get("YOUTUBE_COOKIES")
-    if cookies_env:
-        print("🍪 Found YOUTUBE_COOKIES env var, creating cookies file inside container...")
-        try:
-            with open(cookies_path, 'w') as f:
-                f.write(cookies_env)
-            if os.path.exists(cookies_path):
-                 print(f"   Debug: Cookies file created. Size: {os.path.getsize(cookies_path)} bytes")
-                 with open(cookies_path, 'r') as f:
-                     content = f.read(100)
-                     print(f"   Debug: First 100 chars of cookie file: {content}")
-        except Exception as e:
-            print(f"⚠️ Failed to write cookies file: {e}")
-            cookies_path = None
-    else:
-        cookies_path = None
-        print("⚠️ YOUTUBE_COOKIES env var not found.")
+    cookies_path = _load_youtube_cookies(cookies_content=cookies_content)
     
     # Common yt-dlp options to work around YouTube bot detection.
     # extractor_args tries multiple player clients in order; tv_embed / android

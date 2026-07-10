@@ -7,6 +7,7 @@ import shutil
 import glob
 import time
 import asyncio
+import base64
 from dotenv import load_dotenv
 from typing import Dict, Optional, List
 from contextlib import asynccontextmanager
@@ -31,6 +32,30 @@ MAX_CONCURRENT_JOBS = int(os.environ.get("MAX_CONCURRENT_JOBS", "5"))
 MAX_FILE_SIZE_MB = 2048  # 2GB limit
 JOB_RETENTION_SECONDS = 3600  # 1 hour retention
 DISABLE_YOUTUBE_URL = os.environ.get("DISABLE_YOUTUBE_URL", "false").lower() in ("1", "true", "yes")
+
+
+def _decode_youtube_cookies_header(request: Request) -> Optional[str]:
+    """Decode YouTube cookies sent from dashboard settings (base64 Netscape format)."""
+    cookies_b64 = request.headers.get("X-YouTube-Cookies-Base64", "").strip()
+    if cookies_b64:
+        try:
+            return base64.b64decode(cookies_b64).decode("utf-8")
+        except Exception as e:
+            print(f"⚠️ Failed to decode X-YouTube-Cookies-Base64 header: {e}")
+            return None
+
+    cookies_plain = request.headers.get("X-YouTube-Cookies", "").strip()
+    if cookies_plain:
+        return cookies_plain.replace("\\n", "\n")
+    return None
+
+
+def _youtube_cookies_env_from_request(request: Request) -> Dict[str, str]:
+    """Pass dashboard cookies into subprocess env for main.py."""
+    cookies = _decode_youtube_cookies_header(request)
+    if not cookies:
+        return {}
+    return {"YOUTUBE_COOKIES": cookies}
 
 # Application State
 job_queue = asyncio.Queue()
@@ -364,6 +389,7 @@ async def process_endpoint(
     cmd = ["python", "-u", "main.py"] # -u for unbuffered
     env = os.environ.copy()
     env["GEMINI_API_KEY"] = api_key # Override with key from request
+    env.update(_youtube_cookies_env_from_request(request))
 
     if url:
         cmd.extend(["-u", url])
@@ -1199,6 +1225,7 @@ async def get_social_user(api_key: str = Header(..., alias="X-Upload-Post-Key"))
 
 @app.post("/api/thumbnail/upload")
 async def thumbnail_upload(
+    request: Request,
     file: Optional[UploadFile] = File(None),
     url: Optional[str] = Form(None),
 ):
@@ -1230,6 +1257,7 @@ async def thumbnail_upload(
         "titles": [],
         "conversation": [],
         "_url": url,  # Store URL for deferred download
+        "_youtube_cookies": _decode_youtube_cookies_header(request),
     }
 
     async def run_background_whisper():
@@ -1239,7 +1267,10 @@ async def thumbnail_upload(
             if not vpath and url:
                 from main import download_youtube_video
                 loop = asyncio.get_event_loop()
-                vpath, _ = await loop.run_in_executor(None, download_youtube_video, url, UPLOAD_DIR)
+                cookies = thumbnail_sessions[session_id].get("_youtube_cookies")
+                vpath, _ = await loop.run_in_executor(
+                    None, download_youtube_video, url, UPLOAD_DIR, cookies
+                )
                 thumbnail_sessions[session_id]["video_path"] = vpath
 
             from main import transcribe_video
@@ -1310,7 +1341,8 @@ async def thumbnail_analyze(
 
         if url:
             from main import download_youtube_video
-            video_path, _ = download_youtube_video(url, UPLOAD_DIR)
+            cookies = _decode_youtube_cookies_header(request)
+            video_path, _ = download_youtube_video(url, UPLOAD_DIR, cookies)
         else:
             video_path = os.path.join(UPLOAD_DIR, f"thumb_{session_id}_{file.filename}")
             with open(video_path, "wb") as buffer:
