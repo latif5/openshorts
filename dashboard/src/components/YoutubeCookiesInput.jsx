@@ -9,7 +9,8 @@ export default function YoutubeCookiesInput({ value, onChange, compact = false }
         </summary>
         <div className="mt-3 space-y-2">
           <p className="text-[11px] text-zinc-500 leading-relaxed">
-            Paste Netscape-format cookies from the &quot;Get cookies.txt LOCALLY&quot; extension while logged into YouTube.
+            Paste the <strong>raw Netscape file</strong> from the extension (starts with <code className="text-zinc-400"># Netscape HTTP Cookie File</code>).
+            Do <strong>not</strong> paste the base64 string from terminal.
           </p>
           <textarea
             value={value}
@@ -41,8 +42,7 @@ export default function YoutubeCookiesInput({ value, onChange, compact = false }
         placeholder={"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\t..."}
       />
       <p className="text-[11px] text-zinc-600 mt-2">
-        Use a browser extension like &quot;Get cookies.txt LOCALLY&quot; while logged into YouTube.
-        Must include the <code className="text-zinc-400"># Netscape HTTP Cookie File</code> header line.
+        Use &quot;Get cookies.txt LOCALLY&quot; while logged into YouTube. Paste the <strong>raw export</strong> (with tabs and newlines), not a base64-encoded string.
       </p>
     </div>
   );
