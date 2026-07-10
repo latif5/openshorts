@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy virtual env from builder
 COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+ENV PATH="/opt/venv/bin:/usr/local/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 # Always upgrade yt-dlp to latest with EJS support (YouTube JS challenges)

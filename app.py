@@ -338,7 +338,17 @@ async def run_job(job_id, job_data):
 
 @app.get("/api/config")
 async def get_config():
-    return {"youtubeUrlEnabled": not DISABLE_YOUTUBE_URL}
+    # Lets you verify Zeabur deployed the latest backend (not a cached old image).
+    youtube_download_v2 = False
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "main.py"), encoding="utf-8") as f:
+            youtube_download_v2 = "Trying YouTube player clients" in f.read()
+    except OSError:
+        pass
+    return {
+        "youtubeUrlEnabled": not DISABLE_YOUTUBE_URL,
+        "youtubeDownloadV2": youtube_download_v2,
+    }
 
 @app.post("/api/process")
 async def process_endpoint(
