@@ -13,7 +13,6 @@ import ScheduleWeekModal from './components/ScheduleWeekModal';
 import { getApiUrl, parseJsonResponse, getYoutubeCookieHeaders } from './config';
 
 // Enhanced "Encryption" using XOR + Base64 with a Salt
-// This is better than plain Base64 but still client-side.
 const SECRET_KEY = import.meta.env.VITE_ENCRYPTION_KEY || "OpenShorts-Static-Salt-Change-Me";
 const ENCRYPTION_PREFIX = "ENC:";
 
