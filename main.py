@@ -544,6 +544,29 @@ def _load_youtube_cookies(cookies_path='/app/cookies.txt', cookies_content=None)
         return None
 
 
+_last_percent_time = 0.0
+
+def _yt_dlp_progress_hook(d):
+    global _last_percent_time
+    if d['status'] == 'downloading':
+        current_time = time.time()
+        if current_time - _last_percent_time >= 5:
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+            percent_str = d.get('_percent_str', '').strip()
+            speed_str = d.get('_speed_str', '').strip()
+            eta_str = d.get('_eta_str', '').strip()
+            
+            if total > 0:
+                print(f"📥 [yt-dlp] Downloading: {percent_str} ({downloaded}/{total} bytes) at {speed_str}, ETA: {eta_str}", flush=True)
+            else:
+                print(f"📥 [yt-dlp] Downloading: {downloaded} bytes at {speed_str}, ETA: {eta_str}", flush=True)
+            
+            _last_percent_time = current_time
+    elif d['status'] == 'finished':
+        print("📥 [yt-dlp] Download finished, now merging/processing...", flush=True)
+
+
 def _build_ytdl_opts(cookies_path, player_clients, output_template=None):
     """Build yt-dlp options for a given YouTube player client strategy."""
     opts = {
@@ -570,6 +593,8 @@ def _build_ytdl_opts(cookies_path, player_clients, output_template=None):
                 'Chrome/120.0.0.0 Safari/537.36'
             ),
         },
+        'noprogress': True,
+        'progress_hooks': [_yt_dlp_progress_hook],
     }
     if output_template:
         opts.update({
