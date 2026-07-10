@@ -53,6 +53,9 @@ RUN mkdir -p /app/uploads /app/output /tmp/Ultralytics
 # Pre-download YOLO model on build
 RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
 
+# Pre-download Faster-Whisper base model on build to avoid Hugging Face rate-limits at runtime
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+
 # Set Zeabur environment variable defaults
 ENV PORT=8000
 ENV MAX_CONCURRENT_JOBS=5
