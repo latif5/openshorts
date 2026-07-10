@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Upload, FileVideo, Sparkles, Youtube, Instagram, Share2, LogOut, ChevronDown, Check, Activity, LayoutDashboard, Settings, PlusCircle, History, Menu, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2 } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
+import YoutubeCookiesInput from './components/YoutubeCookiesInput';
 import ResultCard from './components/ResultCard';
 import ProcessingAnimation from './components/ProcessingAnimation';
 // import Gallery from './components/Gallery';
@@ -635,28 +636,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="glass-panel p-6 mt-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">YouTube Cookies</h2>
-                  <span className="text-[10px] bg-white/5 border border-white/5 px-2 py-0.5 rounded text-zinc-500 uppercase tracking-wider">Optional</span>
-                </div>
-                <p className="text-xs text-zinc-500 mb-4 leading-relaxed">
-                  Required for <strong>YouTube URL</strong> processing on cloud servers (Zeabur, Railway, etc.).
-                  Export cookies from your browser in <strong>Netscape format</strong> and paste below.
-                  Stored only in your browser — sent to the backend per request, never saved server-side.
-                </p>
-                <label className="block text-sm text-zinc-400 mb-2">Netscape cookies.txt content</label>
-                <textarea
-                  value={youtubeCookies}
-                  onChange={(e) => setYoutubeCookies(e.target.value)}
-                  className="input-field min-h-[140px] font-mono text-xs"
-                  placeholder={"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\t..."}
-                />
-                <p className="text-[11px] text-zinc-600 mt-2">
-                  Use a browser extension like &quot;Get cookies.txt LOCALLY&quot; while logged into YouTube.
-                  Must include the <code className="text-zinc-400"># Netscape HTTP Cookie File</code> header line.
-                </p>
-              </div>
+              <YoutubeCookiesInput value={youtubeCookies} onChange={setYoutubeCookies} />
 
               <div className="glass-panel p-6 mt-8">
                 <div className="flex items-center justify-between mb-4">
@@ -911,7 +891,12 @@ function App() {
                   </p>
                 </div>
 
-                <MediaInput onProcess={handleProcess} isProcessing={status === 'processing'} />
+                <MediaInput
+                  onProcess={handleProcess}
+                  isProcessing={status === 'processing'}
+                  youtubeCookies={youtubeCookies}
+                  onYoutubeCookiesChange={setYoutubeCookies}
+                />
 
                 <div className="flex items-center justify-center gap-8 text-zinc-500 text-sm">
                   <span className="flex items-center gap-2"><Youtube size={16} /> YouTube</span>

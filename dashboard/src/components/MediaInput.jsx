@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Youtube, Upload, FileVideo, X } from 'lucide-react';
 import { getApiUrl } from '../config';
+import YoutubeCookiesInput from './YoutubeCookiesInput';
 
-export default function MediaInput({ onProcess, isProcessing }) {
+export default function MediaInput({ onProcess, isProcessing, youtubeCookies, onYoutubeCookiesChange }) {
     const [youtubeUrlEnabled, setYoutubeUrlEnabled] = useState(true);
     const [mode, setMode] = useState('url'); // 'url' | 'file'
     const [url, setUrl] = useState('');
@@ -77,6 +78,13 @@ export default function MediaInput({ onProcess, isProcessing }) {
                             className="input-field"
                             required
                         />
+                        {onYoutubeCookiesChange && (
+                            <YoutubeCookiesInput
+                                value={youtubeCookies || ''}
+                                onChange={onYoutubeCookiesChange}
+                                compact
+                            />
+                        )}
                     </div>
                 ) : (
                     <div
