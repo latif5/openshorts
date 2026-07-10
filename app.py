@@ -194,11 +194,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Enable CORS for frontend
+# Enable CORS for frontend (dashboard on a different Zeabur subdomain)
+# allow_credentials=False — API keys are sent via headers, not cookies.
+# Wildcard + credentials=True is invalid and browsers block the response.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
