@@ -26,10 +26,38 @@ export function encodeBase64Utf8(text) {
     return btoa(unescape(encodeURIComponent(text)));
 }
 
+export function decodeBase64Utf8(b64) {
+    return decodeURIComponent(escape(atob(b64)));
+}
+
+export function normalizeYoutubeCookiesForSend(raw) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) return '';
+
+    const looksLikeNetscape =
+        trimmed.startsWith('# Netscape') ||
+        trimmed.includes('.youtube.com\t') ||
+        trimmed.includes('youtube.com\t');
+
+    if (looksLikeNetscape) return trimmed;
+
+    // User may have pasted the base64 string from terminal — decode first.
+    try {
+        const decoded = decodeBase64Utf8(trimmed.replace(/\s+/g, ''));
+        if (decoded.includes('youtube.com') && decoded.includes('\t')) {
+            return decoded;
+        }
+    } catch {
+        // not base64 — send as-is
+    }
+
+    return trimmed;
+}
+
 export function getYoutubeCookieHeaders(youtubeCookies) {
-    const trimmed = (youtubeCookies || '').trim();
-    if (!trimmed) return {};
-    return { 'X-YouTube-Cookies-Base64': encodeBase64Utf8(trimmed) };
+    const normalized = normalizeYoutubeCookiesForSend(youtubeCookies);
+    if (!normalized) return {};
+    return { 'X-YouTube-Cookies-Base64': encodeBase64Utf8(normalized) };
 }
 
 export async function parseJsonResponse(res) {

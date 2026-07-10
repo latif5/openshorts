@@ -447,9 +447,41 @@ def sanitize_filename(filename):
     return filename[:100]
 
 
+def _unwrap_cookies_content(content):
+    """Return raw Netscape cookie text, decoding base64 if needed."""
+    text = (content or '').strip().replace('\r\n', '\n').replace('\r', '\n')
+    if not text:
+        return None
+
+    def looks_like_netscape(value):
+        return (
+            value.startswith('# Netscape')
+            or ('.youtube.com\t' in value)
+            or ('youtube.com\t' in value)
+        )
+
+    if looks_like_netscape(text):
+        return text.replace('\\n', '\n')
+
+    # Dashboard may send already-decoded text in env; user may paste base64 from terminal.
+    candidate = text.replace('\n', '').replace(' ', '')
+    for attempt in range(2):
+        try:
+            decoded = base64.b64decode(candidate, validate=False).decode('utf-8')
+        except Exception:
+            break
+        decoded = decoded.replace('\r\n', '\n').replace('\r', '\n')
+        if looks_like_netscape(decoded) or ('youtube.com' in decoded and '\t' in decoded):
+            print(f"🍪 Decoded base64 cookies payload (pass {attempt + 1}).")
+            return decoded.replace('\\n', '\n')
+        candidate = decoded.replace('\n', '').replace(' ', '')
+
+    return text.replace('\\n', '\n')
+
+
 def _normalize_netscape_cookies(content):
     """Normalize and validate Netscape-format cookie text for yt-dlp."""
-    text = content.strip().replace('\r\n', '\n').replace('\r', '\n')
+    text = _unwrap_cookies_content(content)
     if not text:
         return None
 
@@ -458,6 +490,10 @@ def _normalize_netscape_cookies(content):
 
     if '.youtube.com' not in text and 'youtube.com' not in text:
         print("⚠️ Cookies content does not contain youtube.com entries.")
+        return None
+
+    if '\t' not in text:
+        print("⚠️ Cookies content is not tab-separated Netscape format (did you paste base64?).")
         return None
 
     return text + ('\n' if not text.endswith('\n') else '')
@@ -488,7 +524,7 @@ def _load_youtube_cookies(cookies_path='/app/cookies.txt', cookies_content=None)
             normalized = _normalize_netscape_cookies(cookies_content)
         elif cookies_env:
             print("🍪 Found YOUTUBE_COOKIES env var, creating cookies file inside container...")
-            normalized = _normalize_netscape_cookies(cookies_env.replace("\\n", "\n"))
+            normalized = _normalize_netscape_cookies(cookies_env)
         else:
             print("⚠️ YOUTUBE_COOKIES env var not found.")
             return None
