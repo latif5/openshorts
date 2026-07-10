@@ -555,9 +555,12 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
 
     cookies_path = _load_youtube_cookies(cookies_content=cookies_content)
     
-    # Common yt-dlp options to work around YouTube bot detection.
-    # extractor_args tries multiple player clients in order; tv_embed / android
-    # avoid the OAuth/PO-token checks that block server IPs.
+    # With cookies, prefer web clients that support authentication.
+    # tv_embed/android ignore or reject cookie-based auth.
+    youtube_player_clients = (
+        ['web', 'mweb'] if cookies_path else ['tv_embed', 'android', 'mweb', 'web']
+    )
+
     _COMMON_YDL_OPTS = {
         'quiet': False,
         'verbose': True,
@@ -568,10 +571,12 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
         'fragment_retries': 10,
         'nocheckcertificate': True,
         'cachedir': False,
+        # YouTube now requires a JS runtime + EJS scripts to solve n-challenges
+        'js_runtimes': {'deno': {}, 'node': {}},
+        'remote_components': {'ejs:github'},
         'extractor_args': {
             'youtube': {
-                'player_client': ['tv_embed', 'android', 'mweb', 'web'],
-                'player_skip': ['webpage', 'configs'],
+                'player_client': youtube_player_clients,
             }
         },
         'http_headers': {
@@ -585,7 +590,8 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
 
     with yt_dlp.YoutubeDL(_COMMON_YDL_OPTS) as ydl:
         try:
-            info = ydl.extract_info(url, download=False)
+            # process=False avoids failing when YouTube hides formats behind JS challenges
+            info = ydl.extract_info(url, download=False, process=False)
             video_title = info.get('title', 'youtube_video')
             sanitized_title = sanitize_filename(video_title)
         except Exception as e:
@@ -596,22 +602,39 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
             # Print minimal error first to ensure something gets out
             print("🚨 YOUTUBE DOWNLOAD ERROR 🚨", file=sys.stderr)
             
+            err = str(e)
+            if 'format is not available' in err.lower() or 'only images are available' in err.lower():
+                reason = (
+                    "YouTube blocked video formats on this server (missing JS challenge solver).\n"
+                    "        Redeploy backend with latest image, or upload the video manually."
+                )
+            elif 'no longer valid' in err.lower() or 'login_required' in err.lower() or 'not a bot' in err.lower():
+                reason = (
+                    "YouTube rejected the cookies (expired, rotated, or invalid).\n"
+                    "        Export fresh cookies from your browser and paste them in Dashboard Settings."
+                )
+            else:
+                reason = (
+                    "YouTube has blocked the download request (Error 429/Unavailable).\n"
+                    "        This is likely a temporary IP ban on this server."
+                )
+
             error_msg = f"""
             
 ❌ ================================================================= ❌
 ❌ FATAL ERROR: YOUTUBE DOWNLOAD FAILED
 ❌ ================================================================= ❌
             
-REASON: YouTube has blocked the download request (Error 429/Unavailable).
-        This is likely a temporary IP ban on this server.
+REASON: {reason}
 
 👇 SOLUTION FOR USER 👇
 ---------------------------------------------------------------------
-1. Download the video manually to your computer.
-2. Use the 'Upload Video' tab in this app to process it.
+1. Export NEW cookies (logged into YouTube) → Dashboard → YouTube Cookies
+2. Or download the video manually and use the 'Upload Video' tab
+3. Remove stale YOUTUBE_COOKIES / YOUTUBE_COOKIES_BASE64 from Zeabur backend env
 ---------------------------------------------------------------------
 
-Technical Details: {str(e)}
+Technical Details: {err}
             """
             # Print to both streams to ensure capture
             print(error_msg, file=sys.stdout)
@@ -634,7 +657,12 @@ Technical Details: {str(e)}
     
     ydl_opts = {
         **_COMMON_YDL_OPTS,
-        'format': 'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc1]+bestaudio/best[ext=mp4]/best',
+        'format': (
+            'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/'
+            'bestvideo[vcodec^=avc1]+bestaudio/'
+            'bestvideo+bestaudio/'
+            'best[ext=mp4]/best'
+        ),
         'outtmpl': output_template,
         'merge_output_format': 'mp4',
         'overwrites': True,
