@@ -567,7 +567,18 @@ def _yt_dlp_progress_hook(d):
         print("📥 [yt-dlp] Download finished, now merging/processing...", flush=True)
 
 
-def _build_ytdl_opts(cookies_path, player_clients, output_template=None):
+# Format selectors tried in order — the DASH selector (separate video+audio
+# streams) can trigger 403s on datacenter IPs; the combined fallback avoids that.
+_FORMAT_DASH = (
+    'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/'
+    'bestvideo[vcodec^=avc1]+bestaudio/'
+    'bestvideo+bestaudio/'
+    'best[ext=mp4]/best'
+)
+_FORMAT_COMBINED = 'best[ext=mp4]/best'
+
+
+def _build_ytdl_opts(cookies_path, player_clients, output_template=None, format_selector=_FORMAT_DASH):
     """Build yt-dlp options for a given YouTube player client strategy."""
     opts = {
         'quiet': False,
@@ -575,8 +586,8 @@ def _build_ytdl_opts(cookies_path, player_clients, output_template=None):
         'no_warnings': False,
         'cookiefile': cookies_path if cookies_path else None,
         'socket_timeout': 30,
-        'retries': 10,
-        'fragment_retries': 10,
+        'retries': 3,
+        'fragment_retries': 3,
         'nocheckcertificate': True,
         'cachedir': False,
         'js_runtimes': {'deno': {}, 'node': {}},
@@ -598,12 +609,7 @@ def _build_ytdl_opts(cookies_path, player_clients, output_template=None):
     }
     if output_template:
         opts.update({
-            'format': (
-                'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/'
-                'bestvideo[vcodec^=avc1]+bestaudio/'
-                'bestvideo+bestaudio/'
-                'best[ext=mp4]/best'
-            ),
+            'format': format_selector,
             'outtmpl': output_template,
             'merge_output_format': 'mp4',
             'overwrites': True,
@@ -657,17 +663,26 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
     cookies_path = _load_youtube_cookies(cookies_content=cookies_content)
 
     # Try multiple player clients — YouTube requirements change frequently.
+    #
+    # With cookies:
+    #   - android_vr is INCOMPATIBLE with cookies (yt-dlp always skips it → "only images").
+    #   - web_embedded works on datacenter IPs without needing a PO token.
+    #   - tv falls back with JS challenge solving via Deno.
+    #   - web/mweb is a last-resort combined client attempt.
+    # Without cookies:
+    #   - android_vr is the most permissive client for datacenter IPs.
+    #   - tv_embed + android covers most age-restricted / geo-blocked content.
     if cookies_path:
         client_strategies = [
-            ['android_vr'],
+            ['web_embedded'],
             ['tv'],
             ['web', 'mweb'],
             ['tv_embed', 'android'],
         ]
     else:
         client_strategies = [
-            ['tv_embed', 'android'],
             ['android_vr'],
+            ['tv_embed', 'android'],
             ['mweb', 'web'],
         ]
 
@@ -675,42 +690,53 @@ def download_youtube_video(url, output_dir=".", cookies_content=None):
     sanitized_title = None
 
     for clients in client_strategies:
-        print(f"🔄 Trying YouTube player clients: {clients}")
-        try:
-            opts = _build_ytdl_opts(cookies_path, clients)
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False, process=False)
-                video_title = info.get('title', 'youtube_video')
-                sanitized_title = sanitize_filename(video_title)
+        # For each client strategy, try DASH formats first then fall back to
+        # combined streams if we hit a 403 (common with DASH on datacenter IPs).
+        format_attempts = [_FORMAT_DASH, _FORMAT_COMBINED]
+        for fmt in format_attempts:
+            fmt_label = 'DASH' if fmt == _FORMAT_DASH else 'combined'
+            print(f"🔄 Trying YouTube player clients: {clients} [{fmt_label} format]")
+            try:
+                opts = _build_ytdl_opts(cookies_path, clients)
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False, process=False)
+                    video_title = info.get('title', 'youtube_video')
+                    sanitized_title = sanitize_filename(video_title)
 
-            output_template = os.path.join(output_dir, f'{sanitized_title}.%(ext)s')
-            expected_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
-            if os.path.exists(expected_file):
-                os.remove(expected_file)
-                print("🗑️  Removed existing file to re-download with H.264 codec")
+                output_template = os.path.join(output_dir, f'{sanitized_title}.%(ext)s')
+                expected_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
+                if os.path.exists(expected_file):
+                    os.remove(expected_file)
+                    print("🗑️  Removed existing file to re-download")
 
-            dl_opts = _build_ytdl_opts(cookies_path, clients, output_template)
-            with yt_dlp.YoutubeDL(dl_opts) as ydl:
-                ydl.download([url])
+                dl_opts = _build_ytdl_opts(cookies_path, clients, output_template, fmt)
+                with yt_dlp.YoutubeDL(dl_opts) as ydl:
+                    ydl.download([url])
 
-            downloaded_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
-            if not os.path.exists(downloaded_file):
-                for f in os.listdir(output_dir):
-                    if f.startswith(sanitized_title) and f.endswith('.mp4'):
-                        downloaded_file = os.path.join(output_dir, f)
-                        break
+                downloaded_file = os.path.join(output_dir, f'{sanitized_title}.mp4')
+                if not os.path.exists(downloaded_file):
+                    for f in os.listdir(output_dir):
+                        if f.startswith(sanitized_title) and f.endswith('.mp4'):
+                            downloaded_file = os.path.join(output_dir, f)
+                            break
 
-            if os.path.exists(downloaded_file):
-                step_end_time = time.time()
-                print(f"✅ Video downloaded via {clients} in {step_end_time - step_start_time:.2f}s: {downloaded_file}")
-                return downloaded_file, sanitized_title
+                if os.path.exists(downloaded_file):
+                    step_end_time = time.time()
+                    print(f"✅ Video downloaded via {clients} [{fmt_label}] in {step_end_time - step_start_time:.2f}s: {downloaded_file}")
+                    return downloaded_file, sanitized_title
 
-            raise yt_dlp.utils.DownloadError("Download completed but output file not found")
+                raise yt_dlp.utils.DownloadError("Download completed but output file not found")
 
-        except Exception as e:
-            last_error = e
-            print(f"⚠️ Strategy {clients} failed: {e}")
-            continue
+            except Exception as e:
+                err_str = str(e)
+                last_error = e
+                is_403 = 'http error 403' in err_str.lower() or 'forbidden' in err_str.lower()
+                # On 403 with DASH, immediately retry with combined format
+                if is_403 and fmt == _FORMAT_DASH:
+                    print(f"⚠️ Strategy {clients} [{fmt_label}] got 403 — retrying with combined format...")
+                    continue
+                print(f"⚠️ Strategy {clients} [{fmt_label}] failed: {e}")
+                break  # Non-recoverable error for this client; move to next strategy
 
     import sys
     err = str(last_error) if last_error else "All download strategies failed"
